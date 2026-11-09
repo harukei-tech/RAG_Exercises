@@ -1,0 +1,832 @@
+<title>RAG構築研修</title>
+<style>
+  @font-face {
+    /* システムフォントのみを使用し、フォールバックを明示する */
+  }
+
+  :root {
+    --bg: #f4f6f8;
+    --surface: #ffffff;
+    --surface-2: #e9edf2;
+    --ink: #10151c;
+    --ink-soft: #4a5568;
+    --ink-faint: #7a8494;
+    --border: #d8dee6;
+    --accent-teal: #0e7d72;
+    --accent-teal-soft: #e3f3f1;
+    --accent-amber: #a5570b;
+    --accent-amber-soft: #f8ecdc;
+    --shadow: 0 1px 2px rgba(16, 21, 28, 0.04), 0 8px 24px rgba(16, 21, 28, 0.06);
+
+    --font-display: ui-monospace, "Cascadia Code", "Fira Code", "SFMono-Regular", Menlo, Consolas, monospace;
+    --font-body: ui-sans-serif, -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1220;
+      --surface: #121a2c;
+      --surface-2: #1a2438;
+      --ink: #e9edf3;
+      --ink-soft: #aab4c4;
+      --ink-faint: #6d7896;
+      --border: #263153;
+      --accent-teal: #52d6c6;
+      --accent-teal-soft: #123531;
+      --accent-amber: #f2a949;
+      --accent-amber-soft: #3a2a12;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0b1220;
+    --surface: #121a2c;
+    --surface-2: #1a2438;
+    --ink: #e9edf3;
+    --ink-soft: #aab4c4;
+    --ink-faint: #6d7896;
+    --border: #263153;
+    --accent-teal: #52d6c6;
+    --accent-teal-soft: #123531;
+    --accent-amber: #f2a949;
+    --accent-amber-soft: #3a2a12;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 32px rgba(0, 0, 0, 0.4);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    height: 100%;
+    overflow: hidden;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  .deck {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .progress {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--surface-2);
+    z-index: 50;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent-teal), var(--accent-amber));
+    transition: width 0.35s ease;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: clamp(2rem, 6vw, 6rem) clamp(2rem, 8vw, 8rem);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(12px);
+    transition: opacity 0.35s ease, transform 0.35s ease;
+  }
+  .slide.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+
+  .eyebrow {
+    font-family: var(--font-display);
+    font-size: clamp(0.7rem, 1vw, 0.85rem);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-teal);
+    margin: 0 0 0.9rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .eyebrow::before {
+    content: "";
+    display: inline-block;
+    width: 1.6rem;
+    height: 2px;
+    background: var(--accent-teal);
+  }
+  .eyebrow.amber { color: var(--accent-amber); }
+  .eyebrow.amber::before { background: var(--accent-amber); }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2.1rem, 5vw, 3.6rem);
+    line-height: 1.12;
+    letter-spacing: -0.01em;
+    margin: 0 0 1rem 0;
+    text-wrap: balance;
+  }
+  h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.5rem, 3.2vw, 2.1rem);
+    line-height: 1.25;
+    margin: 0 0 0.5rem 0;
+    text-wrap: balance;
+  }
+  .lede {
+    font-size: clamp(1.05rem, 1.6vw, 1.3rem);
+    color: var(--ink-soft);
+    max-width: 46rem;
+    line-height: 1.6;
+    margin: 0 0 1.6rem 0;
+  }
+
+  .slide-body {
+    display: grid;
+    gap: clamp(1.2rem, 2.5vw, 2.2rem);
+  }
+
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 900px) {
+    .cols-2, .cols-3 { grid-template-columns: 1fr; }
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1.3rem 1.5rem;
+    box-shadow: var(--shadow);
+  }
+  .card h3 {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    margin: 0 0 0.6rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .card p, .card li { color: var(--ink-soft); font-size: 0.98rem; line-height: 1.6; }
+  .card ul { margin: 0.3rem 0 0 0; padding-left: 1.1rem; }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    font-family: var(--font-display);
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    background: var(--accent-teal-soft);
+    color: var(--accent-teal);
+    border: 1px solid color-mix(in srgb, var(--accent-teal) 35%, transparent);
+  }
+  .tag.amber {
+    background: var(--accent-amber-soft);
+    color: var(--accent-amber);
+    border-color: color-mix(in srgb, var(--accent-amber) 35%, transparent);
+  }
+  .tag.free {
+    background: var(--surface-2);
+    color: var(--ink-soft);
+    border-color: var(--border);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 0.55rem 0.8rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--font-display);
+    font-size: 0.75rem;
+    letter-spacing: 0.04em;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+  td { color: var(--ink-soft); }
+  td.num { font-variant-numeric: tabular-nums; }
+
+  .table-wrap { overflow-x: auto; }
+
+  code, pre {
+    font-family: var(--font-display);
+    font-size: 0.86rem;
+  }
+  pre {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    line-height: 1.55;
+    margin: 0;
+    color: var(--ink);
+  }
+  .pre-label {
+    font-family: var(--font-display);
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+
+  figure { margin: 0; }
+  figcaption {
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    margin-top: 0.6rem;
+  }
+  svg text { font-family: var(--font-display); }
+
+  .step-num {
+    font-family: var(--font-display);
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+  }
+
+  .center-slide {
+    align-items: flex-start;
+  }
+  .title-slide {
+    justify-content: center;
+  }
+  .title-slide .kicker {
+    font-family: var(--font-display);
+    font-size: clamp(0.75rem, 1.1vw, 0.95rem);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 1.4rem;
+  }
+  .title-slide h1 { font-size: clamp(2.4rem, 6.4vw, 4.4rem); }
+  .title-meta {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 1.8rem;
+    flex-wrap: wrap;
+  }
+
+  .nav {
+    position: fixed;
+    bottom: 1.4rem;
+    left: 0; right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    z-index: 60;
+    font-family: var(--font-display);
+  }
+  .nav button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--ink);
+    border-radius: 8px;
+    width: 2.4rem;
+    height: 2.4rem;
+    font-size: 1.1rem;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .nav button:hover { border-color: var(--accent-teal); color: var(--accent-teal); }
+  .nav button:focus-visible {
+    outline: 2px solid var(--accent-teal);
+    outline-offset: 2px;
+  }
+  .nav .count {
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    min-width: 4.5rem;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .slide-index {
+    position: fixed;
+    top: 1.2rem;
+    right: 1.4rem;
+    font-family: var(--font-display);
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    z-index: 60;
+  }
+
+  .callout {
+    border-left: 3px solid var(--accent-amber);
+    background: var(--accent-amber-soft);
+    padding: 0.9rem 1.1rem;
+    border-radius: 0 8px 8px 0;
+    font-size: 0.95rem;
+    color: var(--ink);
+    line-height: 1.6;
+  }
+  .callout.teal {
+    border-left-color: var(--accent-teal);
+    background: var(--accent-teal-soft);
+  }
+  .callout strong { color: inherit; }
+
+  ol.timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.65rem; }
+  ol.timeline li {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr;
+    gap: 1rem;
+    align-items: baseline;
+    padding-bottom: 0.65rem;
+    border-bottom: 1px solid var(--border);
+  }
+  ol.timeline li:last-child { border-bottom: none; }
+  ol.timeline .time {
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  ol.timeline .label { font-size: 0.98rem; }
+  ol.timeline .label .sub { color: var(--ink-faint); font-size: 0.86rem; }
+
+  kbd {
+    font-family: var(--font-display);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+    font-size: 0.8rem;
+  }
+
+  a { color: var(--accent-teal); }
+
+  @media print {
+    body { overflow: visible; }
+    .nav, .progress, .slide-index { display: none; }
+    .slide { position: relative; opacity: 1; visibility: visible; transform: none; page-break-after: always; height: 100vh; }
+  }
+</style>
+
+<div class="progress"><div class="progress-bar" id="progressBar" style="width: 4%"></div></div>
+<div class="slide-index" id="slideIndex">01 / 16</div>
+
+<div class="deck" id="deck">
+
+  <!-- 1: Title -->
+  <section class="slide active title-slide">
+    <div class="kicker">IT部署 新入社員研修 · 1日ハンズオン</div>
+    <h1>RAGをゼロから<br>組み立てる。</h1>
+    <p class="lede">社内ヘルプデスクFAQボットを題材に、検索拡張生成（Retrieval-Augmented Generation）の仕組みを、概念だけでなく手を動かして理解する一日。</p>
+    <div class="title-meta">
+      <span class="tag teal">Chunk → Embed → Retrieve → Generate</span>
+      <span class="tag free">埋め込み・検索は無料</span>
+      <span class="tag amber">生成のみ従量課金</span>
+    </div>
+  </section>
+
+  <!-- 2: Agenda -->
+  <section class="slide">
+    <p class="eyebrow">Agenda</p>
+    <h2>今日1日の流れ</h2>
+    <p class="lede">座学45分＋ハンズオン4本＋まとめ。手を動かす時間を最大化する。</p>
+    <ol class="timeline">
+      <li><span class="time">09:30</span><span class="label">オリエンテーション <span class="sub">環境構築の確認</span></span></li>
+      <li><span class="time">10:00</span><span class="label">RAGとは何か <span class="sub">座学</span></span></li>
+      <li><span class="time">10:45</span><span class="label">ハンズオン1 <span class="sub">読み込み・チャンク分割</span></span></li>
+      <li><span class="time">13:00</span><span class="label">ハンズオン2 <span class="sub">埋め込み・ベクトルDB</span></span></li>
+      <li><span class="time">14:15</span><span class="label">ハンズオン3 <span class="sub">検索（Retrieval）を試す</span></span></li>
+      <li><span class="time">15:15</span><span class="label">ハンズオン4 <span class="sub">LLMによる回答生成</span></span></li>
+      <li><span class="time">16:45</span><span class="label">まとめ <span class="sub">対話型ボットの完成・発展課題</span></span></li>
+    </ol>
+  </section>
+
+  <!-- 3: Why RAG -->
+  <section class="slide">
+    <p class="eyebrow">Why RAG</p>
+    <h2>LLM単体には3つの弱点がある</h2>
+    <p class="lede">Claudeのような大規模言語モデルは高性能だが、「知らないこと」への対処に課題を抱えている。</p>
+    <div class="slide-body cols-3">
+      <div class="card">
+        <h3>知識のカットオフ</h3>
+        <p>学習データの時点以降に起きたこと、更新された社内規定を知らない。</p>
+      </div>
+      <div class="card">
+        <h3>非公開情報を知らない</h3>
+        <p>社内VPNのアドレスや、自社のパスワードポリシーなど、非公開の固有情報は原理的に持っていない。</p>
+      </div>
+      <div class="card">
+        <h3>ハルシネーション</h3>
+        <p>知らないことでも、もっともらしい文章で「それらしく」答えてしまうことがある。</p>
+      </div>
+    </div>
+    <div class="callout teal" style="margin-top: 1.6rem;">
+      <strong>RAGの発想：</strong> 知識をLLMに覚えさせるのではなく、質問のたびに関連文書を検索して渡す。
+    </div>
+  </section>
+
+  <!-- 4: Pipeline diagram -->
+  <section class="slide">
+    <p class="eyebrow">Architecture</p>
+    <h2>2つのパイプライン</h2>
+    <p class="lede">索引作成（事前に1回）と、質問応答（毎回）は別のタイミングで動く。</p>
+    <figure>
+      <svg viewBox="0 0 980 300" role="img" aria-label="RAGのIndexingパイプラインとQueryパイプラインの図。Indexingでは社内文書がチャンク分割、埋め込み、ベクトルDB保存の順に処理される。Queryでは質問が埋め込みに変換され、ベクトルDBで検索され、取得したチャンクとともにLLMへ渡されて回答が生成される。">
+        <defs>
+          <marker id="arrowTeal" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-teal)"></path>
+          </marker>
+          <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent-amber)"></path>
+          </marker>
+        </defs>
+
+        <text x="10" y="28" font-size="12" fill="var(--accent-teal)" font-weight="700">INDEXING（事前に1回）</text>
+        <g stroke="var(--accent-teal)" fill="none" stroke-width="1.6">
+          <rect x="10" y="45" width="150" height="60" rx="8"></rect>
+          <line x1="160" y1="75" x2="215" y2="75" marker-end="url(#arrowTeal)"></line>
+          <rect x="220" y="45" width="150" height="60" rx="8"></rect>
+          <line x1="370" y1="75" x2="425" y2="75" marker-end="url(#arrowTeal)"></line>
+          <rect x="430" y="45" width="150" height="60" rx="8"></rect>
+          <line x1="580" y1="75" x2="635" y2="75" marker-end="url(#arrowTeal)"></line>
+          <rect x="640" y="45" width="170" height="60" rx="8"></rect>
+        </g>
+        <g font-size="12.5" fill="var(--ink)" text-anchor="middle">
+          <text x="85" y="70">社内文書</text>
+          <text x="85" y="85" fill="var(--ink-faint)" font-size="10.5">FAQ / 規定</text>
+          <text x="295" y="70">チャンク分割</text>
+          <text x="295" y="85" fill="var(--ink-faint)" font-size="10.5">400字単位</text>
+          <text x="505" y="70">埋め込み変換</text>
+          <text x="505" y="85" fill="var(--ink-faint)" font-size="10.5">sentence-transformers</text>
+          <text x="725" y="70">ベクトルDB保存</text>
+          <text x="725" y="85" fill="var(--ink-faint)" font-size="10.5">Chroma（ローカル）</text>
+        </g>
+
+        <text x="10" y="160" font-size="12" fill="var(--accent-amber)" font-weight="700">QUERY（質問のたびに）</text>
+        <g stroke="var(--accent-amber)" fill="none" stroke-width="1.6">
+          <rect x="10" y="177" width="150" height="60" rx="8"></rect>
+          <line x1="160" y1="207" x2="215" y2="207" marker-end="url(#arrowAmber)"></line>
+          <rect x="220" y="177" width="150" height="60" rx="8"></rect>
+          <line x1="370" y1="207" x2="425" y2="207" marker-end="url(#arrowAmber)"></line>
+          <rect x="430" y="177" width="150" height="60" rx="8"></rect>
+          <line x1="580" y1="207" x2="635" y2="207" marker-end="url(#arrowAmber)"></line>
+          <rect x="640" y="177" width="170" height="60" rx="8"></rect>
+        </g>
+        <g font-size="12.5" fill="var(--ink)" text-anchor="middle">
+          <text x="85" y="202">ユーザーの質問</text>
+          <text x="85" y="217" fill="var(--ink-faint)" font-size="10.5">「VPNに繋がらない」</text>
+          <text x="295" y="202">質問を埋め込みに</text>
+          <text x="295" y="217" fill="var(--ink-faint)" font-size="10.5">同じモデルを使用</text>
+          <text x="505" y="202">類似チャンク検索</text>
+          <text x="505" y="217" fill="var(--ink-faint)" font-size="10.5">距離が近い順に上位N件</text>
+          <text x="725" y="202">Claudeが回答生成</text>
+          <text x="725" y="217" fill="var(--ink-faint)" font-size="10.5">参考情報として渡す</text>
+        </g>
+
+        <line x1="725" y1="105" x2="725" y2="177" stroke="var(--ink-faint)" stroke-width="1.4" stroke-dasharray="3 4" marker-end="url(#arrowAmber)"></line>
+        <text x="735" y="145" font-size="10.5" fill="var(--ink-faint)">保存済みベクトルを検索対象として使う</text>
+      </svg>
+      <figcaption>Indexingは文書更新時に再実行、Queryは質問のたびに実行される。両者は「保存済みベクトルを検索する」という一点でつながっている。</figcaption>
+    </figure>
+  </section>
+
+  <!-- 5: Glossary -->
+  <section class="slide">
+    <p class="eyebrow">Vocabulary</p>
+    <h2>5つの用語を押さえる</h2>
+    <div class="slide-body">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th style="width:16%">用語</th><th style="width:44%">役割</th><th>今日使うツール</th></tr></thead>
+          <tbody>
+            <tr><td><strong>チャンク</strong></td><td>文書を検索しやすい大きさに分割した断片</td><td><code>utils.py</code>（自作）</td></tr>
+            <tr><td><strong>埋め込み</strong></td><td>テキストの「意味」を数値ベクトルで表現したもの</td><td><code>sentence-transformers</code></td></tr>
+            <tr><td><strong>ベクトルDB</strong></td><td>大量のベクトルから「近いもの」を高速検索するDB</td><td><code>Chroma</code></td></tr>
+            <tr><td><strong>検索（Retrieval）</strong></td><td>質問に近いチャンクをベクトルDBから取り出す処理</td><td>Chromaのクエリ機能</td></tr>
+            <tr><td><strong>生成（Generation）</strong></td><td>検索結果を参考にLLMが自然文で回答する処理</td><td><code>Claude API</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <strong>覚えておくこと：</strong> 検索（Retrieval）は「答え」を作らない。質問に直接答えるのは、あくまで最後の生成（Generation）の役目。
+      </div>
+    </div>
+  </section>
+
+  <!-- 6: Cost policy -->
+  <section class="slide">
+    <p class="eyebrow">Cost Policy</p>
+    <h2>課金が発生するのは、たった1箇所</h2>
+    <p class="lede">今日使う技術構成。無料の工程と、課金が発生する工程をはっきり区別する。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>工程</th><th>採用技術</th><th>コスト</th></tr></thead>
+        <tbody>
+          <tr><td>チャンク分割</td><td>自前実装（Pythonのみ）</td><td><span class="tag free">無料</span></td></tr>
+          <tr><td>埋め込み</td><td>sentence-transformers（ローカル実行）</td><td><span class="tag free">無料</span></td></tr>
+          <tr><td>ベクトルDB</td><td>Chroma（ローカル実行）</td><td><span class="tag free">無料</span></td></tr>
+          <tr><td>回答生成（LLM）</td><td>Claude API（claude-haiku-4-5）</td><td><span class="tag amber">従量課金・1問1円未満</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout teal" style="margin-top: 1.4rem;">
+      チャンク分割・埋め込み・検索は、何度実行しても0円。試行錯誤は遠慮なくどうぞ。
+    </div>
+  </section>
+
+  <!-- 7: Hands-on 1 -->
+  <section class="slide">
+    <p class="step-num">HANDS-ON 1 / 4</p>
+    <p class="eyebrow">step1_load_and_chunk.py</p>
+    <h2>なぜチャンクに分割するのか</h2>
+    <div class="slide-body cols-2">
+      <div class="card">
+        <h3>分割する理由</h3>
+        <ul>
+          <li>文書全体より、関連部分だけの方が検索精度が上がる</li>
+          <li>LLMに渡すトークン数（＝コスト）を抑えられる</li>
+          <li>LLMのコンテキスト長には上限がある</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>2つのパラメータ</h3>
+        <ul>
+          <li><code>chunk_size</code>：1チャンクの目安文字数（既定 400）</li>
+          <li><code>chunk_overlap</code>：隣接チャンクの重複文字数（既定 80）</li>
+        </ul>
+        <p style="margin-top:0.6rem;">オーバーラップがないと、境界で文脈が分断される。</p>
+      </div>
+    </div>
+    <div class="pre-label">実行</div>
+    <pre>python step1_load_and_chunk.py</pre>
+  </section>
+
+  <!-- 8: Hands-on 2 -->
+  <section class="slide">
+    <p class="step-num">HANDS-ON 2 / 4</p>
+    <p class="eyebrow">step2_build_vectorstore.py</p>
+    <h2>埋め込み：意味を数値にする</h2>
+    <p class="lede">意味が近い文章ほど、ベクトル空間上でも近い位置に配置される。</p>
+    <figure>
+      <svg viewBox="0 0 900 260" role="img" aria-label="埋め込み空間の概念図。『パスワードを忘れた』と『ログインできない』は文字は違うが近くに配置され、『今日のランチ』は遠く離れて配置されている。">
+        <g stroke="var(--border)" stroke-width="1">
+          <line x1="40" y1="20" x2="40" y2="230"></line>
+          <line x1="40" y1="230" x2="870" y2="230"></line>
+        </g>
+        <g font-size="11" fill="var(--ink-faint)">
+          <text x="30" y="15" text-anchor="middle">意味空間</text>
+        </g>
+
+        <circle cx="230" cy="110" r="7" fill="var(--accent-teal)"></circle>
+        <text x="230" y="95" font-size="13" fill="var(--ink)" text-anchor="middle">「パスワードを忘れた」</text>
+
+        <circle cx="300" cy="150" r="7" fill="var(--accent-teal)"></circle>
+        <text x="300" y="180" font-size="13" fill="var(--ink)" text-anchor="middle">「ログインできない」</text>
+
+        <line x1="230" y1="110" x2="300" y2="150" stroke="var(--accent-teal)" stroke-width="1.4" stroke-dasharray="2 4"></line>
+        <text x="265" y="122" font-size="10.5" fill="var(--accent-teal)" text-anchor="middle">距離: 近い</text>
+
+        <circle cx="720" cy="60" r="7" fill="var(--accent-amber)"></circle>
+        <text x="720" y="45" font-size="13" fill="var(--ink)" text-anchor="middle">「今日のランチのおすすめ」</text>
+
+        <line x1="300" y1="150" x2="720" y2="60" stroke="var(--ink-faint)" stroke-width="1" stroke-dasharray="2 5"></line>
+        <text x="520" y="90" font-size="10.5" fill="var(--ink-faint)" text-anchor="middle">距離: 遠い（無関係）</text>
+      </svg>
+      <figcaption>文字列としては全く違う「パスワードを忘れた」と「ログインできない」が、埋め込みベクトル上では近くなる。これがキーワード検索との決定的な違い。</figcaption>
+    </figure>
+    <div class="callout teal" style="margin-top:1rem;">
+      使用モデル: <code>paraphrase-multilingual-MiniLM-L12-v2</code>（多言語対応・無料・ローカル実行）
+    </div>
+  </section>
+
+  <!-- 9: Hands-on 3 -->
+  <section class="slide">
+    <p class="step-num">HANDS-ON 3 / 4</p>
+    <p class="eyebrow">step3_search.py</p>
+    <h2>検索だけを単体で試す</h2>
+    <p class="lede">LLMを使わず、「意味が近いチャンクを探す」だけの動きを体感する。</p>
+    <div class="pre-label">実行</div>
+    <pre>python step3_search.py "VPNに接続できません"</pre>
+    <div class="slide-body cols-2" style="margin-top: 1.4rem;">
+      <div class="card">
+        <h3>distance（距離）の読み方</h3>
+        <p>数値が<strong>小さいほど</strong>質問と意味が近い＝関連度が高いことを意味する。</p>
+      </div>
+      <div class="card">
+        <h3>検索だけの限界</h3>
+        <p>返ってくるのはあくまで文章の断片。質問への直接的な自然文回答ではない。最後の一歩は次の「生成」が担う。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10: Hands-on 4 -->
+  <section class="slide">
+    <p class="step-num">HANDS-ON 4 / 4</p>
+    <p class="eyebrow">step4_rag_answer.py</p>
+    <h2>ハルシネーション対策の要：システムプロンプト</h2>
+    <p class="lede">RAGを組んだだけでは、嘘をつかなくなるわけではない。「参考情報にないことは答えるな」と明示することが重要。</p>
+    <div class="pre-label">SYSTEM_PROMPT（抜粋）</div>
+    <pre>ルール:
+- 参考情報に書かれていないことは、
+  絶対に推測や一般知識で補わないこと。
+- 見当たらない場合は「社内文書からは
+  確認できませんでした」と正直に答えること。
+- 参考情報のどの文書に基づく回答か、
+  出典として示すこと。</pre>
+  </section>
+
+  <!-- 11: Model choice -->
+  <section class="slide">
+    <p class="eyebrow amber">Model Choice</p>
+    <h2>なぜ Claude Haiku 4.5 なのか</h2>
+    <div class="slide-body cols-2">
+      <div class="card">
+        <h3>研修で採用する理由</h3>
+        <ul>
+          <li>Anthropicのモデルの中で最も低コスト・高速</li>
+          <li>「参考情報をもとに簡潔に答える」タスクには十分な性能</li>
+          <li>試行錯誤の回数を気にせず学習に集中できる</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>本番運用では</h3>
+        <ul>
+          <li>回答品質を重視するなら <code>claude-sonnet-5</code> 等の上位モデルも検討</li>
+          <li>プロンプトキャッシュやBatches APIでさらにコスト最適化</li>
+          <li>まずはHaikuで動くものを作り、精度が足りない箇所だけ引き上げる</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 12: Cost numbers -->
+  <section class="slide">
+    <p class="eyebrow amber">Cost in Numbers</p>
+    <h2>1問あたりのコスト感覚</h2>
+    <p class="lede">参考情報＋質問 約1,500トークン、回答 約300トークンの場合の概算。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>項目</th><th class="num">単価（100万トークンあたり）</th><th class="num">1問あたりの概算</th></tr></thead>
+        <tbody>
+          <tr><td>入力（参考情報＋質問）</td><td class="num">$1.00</td><td class="num">約 0.2円</td></tr>
+          <tr><td>出力（回答）</td><td class="num">$5.00</td><td class="num">約 0.2円</td></tr>
+          <tr><td><strong>合計</strong></td><td></td><td class="num"><strong>0.3〜0.5円 / 問</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      研修中に数十回試しても、合計コストは数十円程度。<code>step4_rag_answer.py</code> は実行のたびに実際のコストを表示する。
+    </div>
+  </section>
+
+  <!-- 13: Completed system -->
+  <section class="slide">
+    <p class="eyebrow">Wrap-up</p>
+    <h2>150行足らずで、RAGの本質は揃う</h2>
+    <p class="lede"><code>rag_cli.py</code> で、ステップ1〜4の部品を組み合わせた対話型ボットが完成する。</p>
+    <div class="pre-label">実行</div>
+    <pre>python rag_cli.py</pre>
+    <div class="slide-body cols-2" style="margin-top:1.4rem;">
+      <div class="card">
+        <h3>今日作ったもの</h3>
+        <p>チャンク分割 → 埋め込み → ベクトルDB → 検索 → LLM生成、という一連の流れをすべて自分の手で実装したCLIボット。</p>
+      </div>
+      <div class="card">
+        <h3>次の一歩</h3>
+        <p>発展課題A〜C（<code>exercises/exercises.md</code>）で、自分の部署の文書を使ったカスタマイズや評価の第一歩に挑戦する。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 14: Future topics -->
+  <section class="slide">
+    <p class="eyebrow">Beyond Today</p>
+    <h2>本番導入に向けた発展トピック</h2>
+    <p class="lede">今日は学習用の最小構成。実務では、以下のような拡張を検討することになる。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>トピック</th><th>概要</th></tr></thead>
+        <tbody>
+          <tr><td>評価（Evaluation）</td><td>検索精度・回答精度を継続的に測定する仕組み</td></tr>
+          <tr><td>再ランキング</td><td>ベクトル検索結果を高精度モデルで並べ替える</td></tr>
+          <tr><td>ハイブリッド検索</td><td>ベクトル検索＋キーワード検索（BM25等）の併用</td></tr>
+          <tr><td>差分更新</td><td>文書更新時にベクトルDB全体を作り直さない仕組み</td></tr>
+          <tr><td>権限管理</td><td>部署ごとにアクセス可能な文書を制限する仕組み</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 15: Troubleshooting -->
+  <section class="slide">
+    <p class="eyebrow">Quick Reference</p>
+    <h2>困ったときに</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>症状</th><th>対処</th></tr></thead>
+        <tbody>
+          <tr><td><code>ModuleNotFoundError</code></td><td>仮想環境を有効化し <code>pip install -r requirements.txt</code></td></tr>
+          <tr><td>モデルDLが遅い/失敗</td><td>ネットワーク・社内プロキシ設定を確認</td></tr>
+          <tr><td>ベクトルDBのエラー</td><td><code>chroma_db</code> フォルダを削除して <code>step2</code> を再実行</td></tr>
+          <tr><td><code>AuthenticationError</code></td><td><code>.env</code> の <code>ANTHROPIC_API_KEY</code> を確認</td></tr>
+          <tr><td><code>RateLimitError</code></td><td>少し待ってから再実行</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 16: Closing -->
+  <section class="slide title-slide">
+    <p class="eyebrow">Q&amp;A</p>
+    <h1>お疲れさまでした。</h1>
+    <p class="lede">今日書いたコードは、皆さんの部署のFAQボットの出発点になる。演習・発展課題は<code>exercises/exercises.md</code>を参照。</p>
+    <div class="title-meta">
+      <span class="tag teal">docs/01_training_text.md</span>
+      <span class="tag amber">code/exercises/exercises.md</span>
+    </div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <button id="prevBtn" aria-label="前のスライド">←</button>
+  <span class="count" id="count">1 / 16</span>
+  <button id="nextBtn" aria-label="次のスライド">→</button>
+</div>
+
+<script>
+  (function () {
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    var total = slides.length;
+    var current = 0;
+
+    var progressBar = document.getElementById('progressBar');
+    var slideIndex = document.getElementById('slideIndex');
+    var countEl = document.getElementById('count');
+    var prevBtn = document.getElementById('prevBtn');
+    var nextBtn = document.getElementById('nextBtn');
+
+    function pad(n) { return n < 10 ? '0' + n : '' + n; }
+
+    function render() {
+      slides.forEach(function (s, i) {
+        s.classList.toggle('active', i === current);
+      });
+      var pct = ((current + 1) / total) * 100;
+      progressBar.style.width = pct + '%';
+      slideIndex.textContent = pad(current + 1) + ' / ' + pad(total);
+      countEl.textContent = (current + 1) + ' / ' + total;
+      prevBtn.disabled = current === 0;
+      nextBtn.disabled = current === total - 1;
+    }
+
+    function go(delta) {
+      var next = current + delta;
+      if (next < 0 || next >= total) return;
+      current = next;
+      render();
+    }
+
+    prevBtn.addEventListener('click', function () { go(-1); });
+    nextBtn.addEventListener('click', function () { go(1); });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'j') { go(1); e.preventDefault(); }
+      if (e.key === 'ArrowLeft' || e.key === 'k') { go(-1); e.preventDefault(); }
+      if (e.key === 'Home') { current = 0; render(); }
+      if (e.key === 'End') { current = total - 1; render(); }
+    });
+
+    var touchStartX = null;
+    document.addEventListener('touchstart', function (e) { touchStartX = e.changedTouches[0].clientX; }, { passive: true });
+    document.addEventListener('touchend', function (e) {
+      if (touchStartX === null) return;
+      var dx = e.changedTouches[0].clientX - touchStartX;
+      if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1);
+      touchStartX = null;
+    }, { passive: true });
+
+    render();
+  })();
+</script>

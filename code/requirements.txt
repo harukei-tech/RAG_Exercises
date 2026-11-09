@@ -1,0 +1,11 @@
+# RAG研修 ハンズオン用 依存パッケージ
+# インストール: pip install -r requirements.txt
+#
+# 事前インストールを強く推奨します（sentence-transformers は
+# 埋め込みモデル本体（数百MB）を初回実行時にダウンロードするため、
+# 研修当日に全員が同時にダウンロードすると回線が混雑します）。
+
+sentence-transformers>=3.0.0    # ローカル埋め込みモデル（無料・API課金なし）
+chromadb>=0.5.0                 # ローカルで動くベクトルDB（無料）
+anthropic>=0.40.0               # Claude API クライアント（回答生成のみ課金）
+python-dotenv>=1.0.0            # .env ファイルからAPIキーを読み込む
